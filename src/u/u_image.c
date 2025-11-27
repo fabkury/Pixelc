@@ -45,8 +45,8 @@ uImage u_image_new_clone_scaled_a(int cols, int rows, uImage from, bool filter_l
     for (int l = 0; l < self.layers; l++) {
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
-                float u = (float) c / cols;
-                float v = (float) r / rows;
+                double u = (double) c / cols;
+                double v = (double) r / rows;
                 *u_image_pixel(self, c, r, l) = u_image_get_pixel_filtered(from, u, v, l, filter_linear);
             }
         }

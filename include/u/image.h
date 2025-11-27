@@ -10,6 +10,7 @@
 #include "s/s.h"
 #include "s/allocator.h"
 #include "m/sca/float.h"
+#include "m/sca/double.h"
 #include "color.h"
 
 
@@ -205,13 +206,13 @@ static bool u_image_contains(uImage self, int c, int r) {
 // returns the filtered color at the % position uv of image self (at the given layer)
 // if filter_linear is false, filter_nearest is used
 // u and v in % [0-1] for row and col
-static uColor_s u_image_get_pixel_filtered(uImage self, float u, float v, int layer, bool filter_linear) {
-    float col = u * self.cols;
-    float row = v * self.rows;
-    int fcol = (int) (sca_floor(col)) % self.cols;
-    int ccol = (int) (sca_ceil(col)) % self.cols;
-    int frow = (int) (sca_floor(row)) % self.rows;
-    int crow = (int) (sca_ceil(row)) % self.rows;
+static uColor_s u_image_get_pixel_filtered(uImage self, double u, double v, int layer, bool filter_linear) {
+    double col = u * self.cols;
+    double row = v * self.rows;
+    int fcol = (int) (dsca_floor(col)) % self.cols;
+    int ccol = (int) (dsca_ceil(col)) % self.cols;
+    int frow = (int) (dsca_floor(row)) % self.rows;
+    int crow = (int) (dsca_ceil(row)) % self.rows;
     float x = col - sca_floor(col);
     float y = row - sca_floor(row);
     if (filter_linear) {
