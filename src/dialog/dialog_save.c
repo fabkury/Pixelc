@@ -2,12 +2,15 @@
 #include "r/r.h"
 #include "u/pose.h"
 #include "u/image.h"
+#include "u/sprite.h"
 #include "u/button.h"
 #include "m/int.h"
+#include "m/sca/float.h"
 #include "io.h"
 #include "modal.h"
 #include "canvas.h"
 #include "dialog.h"
+#include "ext_gifenc.h"
 
 
 static const uColor_s BG_A_COLOR = {{136, 136, 102, 255}};
@@ -38,7 +41,10 @@ typedef struct {
 
     RoText project_txt;
     RoSingle project_btn;
-    
+
+    RoText makapix_txt;
+    RoSingle makapix_btn;
+
     TextInput *textinput;
 } Impl;
 
@@ -61,7 +67,10 @@ static void kill_fn() {
 
     ro_text_kill(&impl->project_txt);
     ro_single_kill(&impl->project_btn);
-    
+
+    ro_text_kill(&impl->makapix_txt);
+    ro_single_kill(&impl->makapix_btn);
+
     textinput_kill(&impl->textinput);
     
     s_free(impl);
@@ -111,6 +120,9 @@ static void render(const mat4 *cam_mat) {
 
     ro_text_render(&impl->project_txt, cam_mat);
     ro_single_render(&impl->project_btn, cam_mat);
+
+    ro_text_render(&impl->makapix_txt, cam_mat);
+    ro_single_render(&impl->makapix_btn, cam_mat);
 }
 
 
@@ -167,6 +179,78 @@ static bool pointer_event(ePointer_s pointer) {
         s_log("project btn");
         dialog_create_project();
         // return after create, create hides this dialog, which kills it
+        return true;
+    }
+
+    if(u_button_clicked(&impl->makapix_btn.rect, pointer)) {
+        s_log("export to makapix");
+        uImage img;
+        if (io.image_save_merged)
+            img = canvas_get_merged_image();
+        else
+            img = canvas_get_full_image();
+
+        int frame_count = canvas.RO.frames;
+        if (frame_count > 1) {
+            // Multiple frames: export as GIF
+            s_log("exporting %d frames as gif", frame_count);
+            uSprite sprite = u_sprite_new_reorder_from_image(frame_count, img);
+
+            // Use the save_gif logic inline (simplified from io.c)
+            int w = sprite.img.cols;
+            int h = sprite.img.rows;
+            ucvec3 *palette = s_new0(ucvec3, 256);
+            int size = 1;
+
+            // Build color palette
+            for (int idx = 0; idx < w * h * sprite.img.layers; idx++) {
+                uColor_s col = *u_image_pixel_index(sprite.img, idx, 0);
+                if (col.a == 0) continue;
+                bool found = false;
+                for (int p = 1; p < size; p++) {
+                    if (palette[p].x == col.r && palette[p].y == col.g && palette[p].z == col.b) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && size < 256) {
+                    palette[size] = col.rgb;
+                    size++;
+                }
+            }
+
+            ge_GIF *gif = ge_new_gif("makapix_export.gif", w, h, (su8 *)palette, 8, 0, 0);
+            if (gif) {
+                for (int frame = 0; frame < sprite.cols; frame++) {
+                    for (int idx = 0; idx < w * h; idx++) {
+                        uColor_s col = *u_image_pixel_index(sprite.img, idx, frame);
+                        int col_id = 0;
+                        if (col.a != 0) {
+                            for (int p = 1; p < size; p++) {
+                                if (palette[p].x == col.r && palette[p].y == col.g && palette[p].z == col.b) {
+                                    col_id = p;
+                                    break;
+                                }
+                            }
+                        }
+                        gif->frame[idx] = (su8) col_id;
+                    }
+                    ge_add_frame(gif, sca_ceil(100 * canvas.frame_times[frame]));
+                }
+                ge_close_gif(gif);
+            }
+            s_free(palette);
+
+            e_io_export_to_makapix("makapix_export.gif", sprite.img.cols, sprite.img.rows, frame_count);
+            u_sprite_kill(&sprite);
+        } else {
+            // Single frame: export as PNG
+            s_log("exporting single frame as png");
+            u_image_save_file(img, "makapix_export.png");
+            e_io_export_to_makapix("makapix_export.png", img.cols, img.rows, 1);
+        }
+        u_image_kill(&img);
+        dialog_hide();
         return true;
     }
 
@@ -251,6 +335,15 @@ void dialog_create_save() {
     impl->project_txt.pose = u_pose_new(DIALOG_LEFT + 8, DIALOG_TOP - pos - 2, 1, 2);
     impl->project_btn = ro_single_new(r_texture_new_file(2, 1, "res/button_project.png"));
     impl->project_btn.rect.pose = u_pose_new_aa(DIALOG_LEFT + DIALOG_WIDTH - 20, DIALOG_TOP - pos, 16, 16);
+
+    pos += 18;
+
+    impl->makapix_txt = ro_text_new_font55(20);
+    ro_text_set_text(&impl->makapix_txt, "Makapix Club:");
+    ro_text_set_color(&impl->makapix_txt, DIALOG_TEXT_COLOR);
+    impl->makapix_txt.pose = u_pose_new(DIALOG_LEFT + 8, DIALOG_TOP - pos - 2, 1, 2);
+    impl->makapix_btn = ro_single_new(r_texture_new_file(2, 1, "res/button_save.png"));
+    impl->makapix_btn.rect.pose = u_pose_new_aa(DIALOG_LEFT + DIALOG_WIDTH - 20, DIALOG_TOP - pos, 16, 16);
 
     pos += 4;
     

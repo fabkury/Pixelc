@@ -113,6 +113,16 @@ void e_io_offer_file_as_download(const char *file) {
     emscripten_run_script(script);
 }
 
+void e_io_export_to_makapix(const char *file, int width, int height, int frame_count) {
+    char script[256];
+    if(strlen(file) >= 200) {
+        s_log_error("e_io_export_to_makapix failed, file length too long");
+        return;
+    }
+    snprintf(script, sizeof script, "export_to_makapix('%s', %d, %d, %d);", file, width, height, frame_count);
+    emscripten_run_script(script);
+}
+
 void e_io_ask_for_file_upload(const char *file, bool ascii, eIoFileUploadCallback callback, void *user_data) {
     if(strlen(file) >= sizeof L.file_upload.file || s_str_count(s_strc(file), '/') != 0) {
         s_log_error("e_io_ask_for_file_upload failed, file length to long, or got some \'/\'");

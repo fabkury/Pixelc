@@ -191,6 +191,66 @@
         }
     }
 
+    // Makapix Club integration via postMessage (iframe communication)
+    var MAKAPIX_ORIGIN = 'https://dev.makapix.club';
+    var makapixInitialized = false;
+
+    // Listen for init message from parent (Makapix)
+    window.addEventListener('message', function(event) {
+        if (event.origin !== MAKAPIX_ORIGIN) return;
+
+        var data = event.data;
+        if (!data || !data.type) return;
+
+        if (data.type === 'MAKAPIX_INIT') {
+            console.log('Makapix init received');
+            makapixInitialized = true;
+            // Could store access token if needed for future features
+        }
+    });
+
+    // Signal to parent that Pixelc is ready
+    window.addEventListener('load', function() {
+        if (window.parent !== window) {
+            window.parent.postMessage({ type: 'PIXELC_READY' }, MAKAPIX_ORIGIN);
+        }
+    });
+
+    // Called from the engine to export artwork to Makapix Club
+    function export_to_makapix(filename, width, height, frameCount) {
+        try {
+            let content = Module.FS.readFile(filename);
+            console.log('Exporting to Makapix: "' + filename + '", ' + width + 'x' + height + ', ' + frameCount + ' frames, ' + content.length + ' bytes');
+
+            // Detect mime type from filename
+            let mime = 'image/png';
+            if (filename.toLowerCase().endsWith('.gif')) {
+                mime = 'image/gif';
+            }
+
+            // Convert to blob for postMessage
+            let blob = new Blob([content], {type: mime});
+
+            // Send export message to parent window
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'PIXELC_EXPORT',
+                    blob: blob,
+                    name: 'pixelc_artwork',
+                    width: width,
+                    height: height,
+                    frameCount: frameCount
+                }, MAKAPIX_ORIGIN);
+            } else {
+                // Fallback: offer as download if not in iframe
+                offer_file_as_download(filename);
+            }
+        } catch (e) {
+            console.error('Export to Makapix failed:', e);
+            alert('Export failed: ' + e.message);
+        }
+    }
+
     //
     // local file upload stuff, see ask_for_file_upload below
     //

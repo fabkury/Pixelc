@@ -20,6 +20,11 @@ typedef void (*eIoFileUploadCallback)(const char *file, bool ascii, const char *
 // noop for PLATFORM_CXXDROID
 void e_io_offer_file_as_download(const char *file);
 
+// export the canvas image to Makapix Club via postMessage
+// only for PLATFORM_EMSCRIPTEN
+// frame_count: number of frames (1 for PNG, >1 for GIF)
+void e_io_export_to_makapix(const char *file, int width, int height, int frame_count);
+
 // opens a file dialog to upload a file
 // on success, callback is called
 // should be called after a pointer event, or the browser may discard the file dialog

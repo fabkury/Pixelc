@@ -1,0 +1,22 @@
+:80 {
+    root * /srv
+    encode gzip
+    file_server
+
+    # Security headers
+    header X-Content-Type-Options nosniff
+    header Cross-Origin-Opener-Policy same-origin
+    header Cross-Origin-Embedder-Policy require-corp
+
+    # Prevent caching of HTML to ensure users always get latest version
+    @html {
+        path *.html /
+    }
+    header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+    # WASM files need correct MIME type
+    @wasm {
+        path *.wasm
+    }
+    header @wasm Content-Type "application/wasm"
+}
