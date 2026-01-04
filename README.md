@@ -8,6 +8,10 @@ This is a fork of [Pixelc](https://github.com/renehorstmann/Pixelc), an open-sou
 
 This repository exists to incorporate **Makapix Club integration** into Pixelc. For information about the original Pixelc editor—including features, documentation, installation instructions, and known issues—please visit the [original Pixelc repository](https://github.com/renehorstmann/Pixelc).
 
+## Acknowledgments
+
+We extend our sincere gratitude to [René Horstmann](https://github.com/renehorstmann) and all contributors to the original [Pixelc](https://github.com/renehorstmann/Pixelc) project. Their dedication to creating a powerful, open-source pixel art editor has made this integration possible. Thank you for sharing your work with the community under an open license.
+
 ## Makapix Club
 
 [Makapix Club](https://dev.makapix.club/) is a platform for pixel artists. To learn more about the Makapix project and its features, visit:
