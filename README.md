@@ -10,7 +10,7 @@ This repository exists to incorporate **Makapix Club integration** into Pixelc. 
 
 ## Acknowledgments
 
-We extend our sincere gratitude to [René Horstmann](https://github.com/renehorstmann) and all contributors to the original [Pixelc](https://github.com/renehorstmann/Pixelc) project. Their dedication to creating a powerful, open-source pixel art editor has made this integration possible. Thank you for sharing your work with the community under an open license.
+We extend our sincere gratitude to [René Horstmann](https://github.com/renehorstmann) and all contributors to the original [Pixelc](https://github.com/renehorstmann/Pixelc) project. Their dedication to creating a powerful, **mobile-ready**, open-source pixel art editor has made this integration possible. Thank you for sharing your work with the community under an open license.
 
 ## Makapix Club
 
@@ -24,3 +24,4 @@ We extend our sincere gratitude to [René Horstmann](https://github.com/renehors
 This fork maintains the same licensing terms as the original Pixelc project: **GPLv3**. See [LICENSE](LICENSE) for details.
 
 For the complete licensing information including third-party dependencies, please refer to the [original repository's license section](https://github.com/renehorstmann/Pixelc#licence).
+
