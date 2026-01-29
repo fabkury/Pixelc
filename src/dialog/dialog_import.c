@@ -7,6 +7,7 @@
 #include "cameractrl.h"
 #include "selectionctrl.h"
 #include "dialog.h"
+#include "ext_webp.h"
 
 static const uColor_s BG_A_COLOR = {{136, 136, 102, 255}};
 static const uColor_s BG_B_COLOR = {{143, 143, 102, 255}};
@@ -22,6 +23,9 @@ typedef struct {
     RoSingle import;
 
     bool import_available;
+    bool is_webp;
+    bool is_animated_webp;
+    int webp_frame_count;
 
     RoText to_canvas_txt;
     RoSingle to_canvas_btn;
@@ -30,6 +34,7 @@ typedef struct {
     RoSingle as_selection_btn;
 
     RoSingle upload;
+    RoSingle upload_webp;
     bool upload_available;
 
 } Impl;
@@ -40,6 +45,7 @@ static void kill_fn() {
     ro_text_kill(&impl->info);
     ro_single_kill(&impl->import);
     ro_single_kill(&impl->upload);
+    ro_single_kill(&impl->upload_webp);
     ro_text_kill(&impl->to_canvas_txt);
     ro_single_kill(&impl->to_canvas_btn);
     ro_text_kill(&impl->as_selection_txt);
@@ -65,10 +71,31 @@ static void render(const mat4 *cam_mat) {
     }
     if (impl->upload_available) {
         ro_single_render(&impl->upload, cam_mat);
+        ro_single_render(&impl->upload_webp, cam_mat);
     }
 }
 
 static void uploaded(const char *file, bool ascii, const char *user_file_name, void *user_data) {
+    dialog_create_import();
+}
+
+static void uploaded_webp(const char *file, bool ascii, const char *user_file_name, void *user_data) {
+    // Convert the webp to png for the import system or handle animated webp
+    s_log("webp uploaded: %s", file);
+
+    if (webp_is_animated(file)) {
+        s_log("animated webp detected");
+        // For animated webp, we'll load it directly when the user clicks import
+        // Just recreate the dialog to show the preview
+    } else {
+        // For static webp, convert to png for compatibility with existing import
+        uImage img = webp_load_image(file);
+        if (u_image_valid(img)) {
+            u_image_save_file(img, "import.png");
+            u_image_kill(&img);
+        }
+    }
+
     dialog_create_import();
 }
 
@@ -82,15 +109,39 @@ static bool pointer_event(ePointer_s pointer) {
         return true;
     }
 
+    if (impl->upload_available && u_button_clicked(&impl->upload_webp.rect, pointer)) {
+        s_log("import webp upload...");
+        e_io_ask_for_file_upload("import.webp", false, uploaded_webp, NULL);
+        // return after hide, hide kills this dialog
+        return true;
+    }
+
     if (impl->import_available && u_button_clicked(&impl->to_canvas_btn.rect, pointer)) {
         s_log("import to canvas");
-        uSprite sprite = u_sprite_new_file(1, 1, "import.png");
-        if (!u_sprite_valid(sprite)) {
-            dialog_create_import();
-            // return after hide, hide kills this dialog
-            return true;
+
+        if (impl->is_animated_webp) {
+            // Load animated webp with frame times
+            float frame_times[CANVAS_MAX_FRAMES];
+            int frame_count = 0;
+            uSprite sprite = webp_load_animated("import.webp", frame_times, &frame_count);
+            if (!u_sprite_valid(sprite)) {
+                dialog_create_import();
+                return true;
+            }
+            // Copy frame times to canvas
+            for (int i = 0; i < frame_count && i < CANVAS_MAX_FRAMES; i++) {
+                canvas.frame_times[i] = frame_times[i];
+            }
+            canvas_set_sprite(sprite, true);
+        } else {
+            uSprite sprite = u_sprite_new_file(1, 1, "import.png");
+            if (!u_sprite_valid(sprite)) {
+                dialog_create_import();
+                // return after hide, hide kills this dialog
+                return true;
+            }
+            canvas_set_sprite(sprite, true);
         }
-        canvas_set_sprite(sprite, true);
         cameractrl_set_home();
         dialog_hide();
         // return after hide, hide kills this dialog
@@ -131,7 +182,30 @@ void dialog_create_import() {
     Impl *impl = s_new0(Impl, 1);
     dialog.impl = impl;
 
-    uImage img = u_image_new_file(1, "import.png");
+    // Check for animated webp first
+    impl->is_animated_webp = webp_is_animated("import.webp");
+
+    uImage img;
+    if (impl->is_animated_webp) {
+        // Load first frame for preview
+        float frame_times[CANVAS_MAX_FRAMES];
+        uSprite sprite = webp_load_animated("import.webp", frame_times, &impl->webp_frame_count);
+        if (u_sprite_valid(sprite)) {
+            // Create a new image with just the first frame
+            img = u_image_new_empty(sprite.img.cols, sprite.img.rows, 1);
+            if (u_image_valid(img)) {
+                memcpy(img.data, u_sprite_sprite(sprite, 0, 0),
+                       sprite.img.cols * sprite.img.rows * sizeof(uColor_s));
+            }
+            impl->is_webp = true;
+            u_sprite_kill(&sprite);
+        } else {
+            img = u_image_new_invalid();
+        }
+    } else {
+        img = u_image_new_file(1, "import.png");
+    }
+
     impl->import_available = u_image_valid(img)
                              && img.cols <= CANVAS_MAX_SIZE
                              && img.rows <= CANVAS_MAX_SIZE
@@ -144,15 +218,21 @@ void dialog_create_import() {
 
     if (!impl->import_available) {
         ro_text_set_text(&impl->info, "failed to load\n"
-                                      "import.png image");
+                                      "import image");
         impl->info.pose = u_pose_new(DIALOG_LEFT + 8, DIALOG_TOP - pos - 4, 1, 2);
         pos += 26;
 
     } else {
 
-        char text[64];
-        snprintf(text, sizeof text, "cols: %i\n"
-                                    "rows: %i", img.cols, img.rows);
+        char text[128];
+        if (impl->is_animated_webp) {
+            snprintf(text, sizeof text, "cols: %i\n"
+                                        "rows: %i\n"
+                                        "frames: %i", img.cols, img.rows, impl->webp_frame_count);
+        } else {
+            snprintf(text, sizeof text, "cols: %i\n"
+                                        "rows: %i", img.cols, img.rows);
+        }
         ro_text_set_text(&impl->info, text);
         impl->info.pose = u_pose_new(DIALOG_LEFT + 50, DIALOG_TOP - pos - 4, 1, 2);
 
@@ -170,6 +250,9 @@ void dialog_create_import() {
 
         pos += 34;
 
+        if (impl->is_animated_webp) {
+            pos += 10;  // Extra space for frames info
+        }
 
         impl->to_canvas_txt = ro_text_new_font55(32);
         ro_text_set_text(&impl->to_canvas_txt, "Copy into\n"
@@ -201,8 +284,10 @@ void dialog_create_import() {
 
 #ifndef PLATFORM_CXXDROID
     impl->upload = ro_single_new(r_texture_new_file(2, 1, "res/button_dialog_upload.png"));
+    impl->upload_webp = ro_single_new(r_texture_new_file(2, 1, "res/button_dialog_upload.png"));
     impl->upload_available = true;
     impl->upload.rect.pose = u_pose_new_aa(DIALOG_LEFT + 8, DIALOG_TOP - pos - 18, 64, 16);
+    impl->upload_webp.rect.pose = u_pose_new_aa(DIALOG_LEFT + 8 + 72, DIALOG_TOP - pos - 18, 64, 16);
 #endif
 
 

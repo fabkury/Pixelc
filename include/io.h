@@ -41,6 +41,14 @@ void io_gif_save();
 // merges layers if io.image_save_merged
 void io_gif_hd_save();
 
+// saves the frame animation as animation.webp (lossless)
+// merges layers if io.image_save_merged
+void io_webp_save();
+
+// saves the frame animation scaled by io.hd_multiplyer as animation_hd.webp (lossless)
+// merges layers if io.image_save_merged
+void io_webp_hd_save();
+
 // saves the tilemap preview as tilemap.png
 // only saves if tile.active && tile.canvas_active
 // always merges layers

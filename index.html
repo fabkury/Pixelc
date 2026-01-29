@@ -132,7 +132,11 @@
                 <input id="file_uploader_json" type="file" accept="application/json"/>
                 Upload .json file
             </label>
-        
+            <label id="modal_upload_webp_button" class="modal_button">
+                <input id="file_uploader_webp" type="file" accept="image/webp"/>
+                Upload .webp file
+            </label>
+
             <p class="modal_font_small">(Please don't zoom in)</p>
         </div>
     </div>
@@ -167,6 +171,10 @@
             filename_lower = filename.toLowerCase();
             if (filename_lower.endsWith(".png"))
                 mime = "image/png";
+            else if (filename_lower.endsWith(".webp"))
+                mime = "image/webp";
+            else if (filename_lower.endsWith(".gif"))
+                mime = "image/gif";
             else if (filename_lower.endsWith(".txt"))
                 mime = "text/plain";
             else if (filename_lower.endsWith(".json"))
@@ -232,6 +240,8 @@
             let mime = 'image/png';
             if (filename.toLowerCase().endsWith('.gif')) {
                 mime = 'image/gif';
+            } else if (filename.toLowerCase().endsWith('.webp')) {
+                mime = 'image/webp';
             }
 
             // Convert to blob for postMessage
@@ -297,11 +307,13 @@
     file_uploader_png = document.getElementById('file_uploader_png');
     file_uploader_txt = document.getElementById('file_uploader_txt');
     file_uploader_json = document.getElementById('file_uploader_json');
+    file_uploader_webp = document.getElementById('file_uploader_webp');
 
     file_uploader.addEventListener('change', handle_file_upload, false);
     file_uploader_png.addEventListener('change', handle_file_upload, false);
     file_uploader_txt.addEventListener('change', handle_file_upload, false);
     file_uploader_json.addEventListener('change', handle_file_upload, false);
+    file_uploader_webp.addEventListener('change', handle_file_upload, false);
 
     // called from the engine to ask for a file upload
     function ask_for_file_upload(filename, as_ascii) {
@@ -321,15 +333,19 @@
         uploader_png_btn = document.getElementById('modal_upload_png_button');
         uploader_txt_btn = document.getElementById('modal_upload_txt_button');
         uploader_json_btn = document.getElementById('modal_upload_json_button');
+        uploader_webp_btn = document.getElementById('modal_upload_webp_button');
 
         uploader_btn.style.display = "none";
         uploader_png_btn.style.display = "none";
         uploader_txt_btn.style.display = "none";
         uploader_json_btn.style.display = "none";
+        uploader_webp_btn.style.display = "none";
 
         filename_lower = filename.toLowerCase();
         if (filename_lower.endsWith(".png"))
             uploader_png_btn.style.display = "block";
+        else if (filename_lower.endsWith(".webp"))
+            uploader_webp_btn.style.display = "block";
         else if (filename_lower.endsWith(".txt"))
             uploader_txt_btn.style.display = "block";
         else if (filename_lower.endsWith(".json"))

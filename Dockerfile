@@ -2,9 +2,20 @@
 # Builds Pixelc to WebAssembly and serves via Caddy
 
 # Build stage - Compile C code to WebAssembly via Emscripten
-FROM emscripten/emsdk:3.1.51 AS builder
+FROM emscripten/emsdk:3.1.61 AS builder
 
 WORKDIR /app
+
+# Download and build libwebp for Emscripten
+RUN curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.3.2.tar.gz -o libwebp.tar.gz && \
+    tar xzf libwebp.tar.gz && \
+    cd libwebp-1.3.2 && \
+    emconfigure ./configure --disable-shared --enable-static \
+        --disable-threading --disable-gl --disable-sdl \
+        --disable-png --disable-jpeg --disable-tiff --disable-gif \
+        --enable-libwebpmux --enable-libwebpdemux && \
+    emmake make -j$(nproc) && \
+    emmake make install
 
 # Copy source files
 COPY . .
@@ -20,6 +31,7 @@ RUN mkdir -p web && \
 WORKDIR /app/web
 RUN emcc -O3 \
     -I../include/ \
+    -I/usr/local/include \
     -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s FULL_ES3=1 \
     -s EXPORTED_FUNCTIONS='["_main", "_e_io_idbfs_synced", "_e_io_file_upload_done"]' \
     -s EXPORTED_RUNTIME_METHODS=FS,ccall \
@@ -27,6 +39,7 @@ RUN emcc -O3 \
     --preload-file ./res \
     -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY=1 -s EXIT_RUNTIME=1 \
     -lidbfs.js \
+    -L/usr/local/lib -lwebpmux -lwebpdemux -lwebp -lsharpyuv -lm \
     -DPLATFORM_EMSCRIPTEN -DOPTION_GLES -DOPTION_SDL \
     ../src/e/*.c ../src/p/*.c ../src/r/*.c ../src/u/*.c ../src/*.c ../src/dialog/*.c ../src/tool/*.c \
     -o index.js
