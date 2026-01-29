@@ -192,19 +192,22 @@
     }
 
     // Makapix Club integration via postMessage (iframe communication)
-    var MAKAPIX_ORIGIN = 'https://dev.makapix.club';
+    var MAKAPIX_ORIGINS = ['https://makapix.club', 'https://development.makapix.club'];
+    function isAllowedOrigin(origin) { return MAKAPIX_ORIGINS.includes(origin); }
     var makapixInitialized = false;
+    var detectedParentOrigin = null;
 
     // Listen for init message from parent (Makapix)
     window.addEventListener('message', function(event) {
-        if (event.origin !== MAKAPIX_ORIGIN) return;
+        if (!isAllowedOrigin(event.origin)) return;
 
         var data = event.data;
         if (!data || !data.type) return;
 
         if (data.type === 'MAKAPIX_INIT') {
-            console.log('Makapix init received');
+            console.log('Makapix init received from: ' + event.origin);
             makapixInitialized = true;
+            detectedParentOrigin = event.origin;
             // Could store access token if needed for future features
         }
     });
@@ -212,7 +215,10 @@
     // Signal to parent that Pixelc is ready
     window.addEventListener('load', function() {
         if (window.parent !== window) {
-            window.parent.postMessage({ type: 'PIXELC_READY' }, MAKAPIX_ORIGIN);
+            // Send ready signal to all allowed origins (we don't know which one yet)
+            MAKAPIX_ORIGINS.forEach(function(origin) {
+                window.parent.postMessage({ type: 'PIXELC_READY' }, origin);
+            });
         }
     });
 
@@ -232,7 +238,7 @@
             let blob = new Blob([content], {type: mime});
 
             // Send export message to parent window
-            if (window.parent !== window) {
+            if (window.parent !== window && detectedParentOrigin) {
                 window.parent.postMessage({
                     type: 'PIXELC_EXPORT',
                     blob: blob,
@@ -240,7 +246,7 @@
                     width: width,
                     height: height,
                     frameCount: frameCount
-                }, MAKAPIX_ORIGIN);
+                }, detectedParentOrigin);
             } else {
                 // Fallback: offer as download if not in iframe
                 offer_file_as_download(filename);
