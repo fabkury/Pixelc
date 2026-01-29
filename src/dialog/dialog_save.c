@@ -11,6 +11,7 @@
 #include "canvas.h"
 #include "dialog.h"
 #include "ext_gifenc.h"
+#include "ext_webp.h"
 
 
 static const uColor_s BG_A_COLOR = {{136, 136, 102, 255}};
@@ -39,6 +40,10 @@ typedef struct {
     RoSingle gif_btn;
     RoSingle gif_hd_btn;
 
+    RoText webp_txt;
+    RoSingle webp_btn;
+    RoSingle webp_hd_btn;
+
     RoText project_txt;
     RoSingle project_btn;
 
@@ -64,6 +69,10 @@ static void kill_fn() {
     ro_text_kill(&impl->gif_txt);
     ro_single_kill(&impl->gif_btn);
     ro_single_kill(&impl->gif_hd_btn);
+
+    ro_text_kill(&impl->webp_txt);
+    ro_single_kill(&impl->webp_btn);
+    ro_single_kill(&impl->webp_hd_btn);
 
     ro_text_kill(&impl->project_txt);
     ro_single_kill(&impl->project_btn);
@@ -117,6 +126,10 @@ static void render(const mat4 *cam_mat) {
     ro_text_render(&impl->gif_txt, cam_mat);
     ro_single_render(&impl->gif_btn, cam_mat);
     ro_single_render(&impl->gif_hd_btn, cam_mat);
+
+    ro_text_render(&impl->webp_txt, cam_mat);
+    ro_single_render(&impl->webp_btn, cam_mat);
+    ro_single_render(&impl->webp_hd_btn, cam_mat);
 
     ro_text_render(&impl->project_txt, cam_mat);
     ro_single_render(&impl->project_btn, cam_mat);
@@ -175,6 +188,21 @@ static bool pointer_event(ePointer_s pointer) {
         return true;
     }
 
+    if(u_button_clicked(&impl->webp_btn.rect, pointer)) {
+        s_log("save webp");
+        io_webp_save();
+        dialog_hide();
+        // return after hide, hide kills this dialog
+        return true;
+    }
+    if(u_button_clicked(&impl->webp_hd_btn.rect, pointer)) {
+        s_log("save webp hd");
+        io_webp_hd_save();
+        dialog_hide();
+        // return after hide, hide kills this dialog
+        return true;
+    }
+
     if(u_button_clicked(&impl->project_btn.rect, pointer)) {
         s_log("project btn");
         dialog_create_project();
@@ -192,56 +220,13 @@ static bool pointer_event(ePointer_s pointer) {
 
         int frame_count = canvas.RO.frames;
         if (frame_count > 1) {
-            // Multiple frames: export as GIF
-            s_log("exporting %d frames as gif", frame_count);
+            // Multiple frames: export as lossless WEBP
+            s_log("exporting %d frames as lossless webp", frame_count);
             uSprite sprite = u_sprite_new_reorder_from_image(frame_count, img);
 
-            // Use the save_gif logic inline (simplified from io.c)
-            int w = sprite.img.cols;
-            int h = sprite.img.rows;
-            ucvec3 *palette = s_new0(ucvec3, 256);
-            int size = 1;
+            webp_save_animated(sprite, canvas.frame_times, "makapix_export.webp");
 
-            // Build color palette
-            for (int idx = 0; idx < w * h * sprite.img.layers; idx++) {
-                uColor_s col = *u_image_pixel_index(sprite.img, idx, 0);
-                if (col.a == 0) continue;
-                bool found = false;
-                for (int p = 1; p < size; p++) {
-                    if (palette[p].x == col.r && palette[p].y == col.g && palette[p].z == col.b) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found && size < 256) {
-                    palette[size] = col.rgb;
-                    size++;
-                }
-            }
-
-            ge_GIF *gif = ge_new_gif("makapix_export.gif", w, h, (su8 *)palette, 8, 0, 0);
-            if (gif) {
-                for (int frame = 0; frame < sprite.cols; frame++) {
-                    for (int idx = 0; idx < w * h; idx++) {
-                        uColor_s col = *u_image_pixel_index(sprite.img, idx, frame);
-                        int col_id = 0;
-                        if (col.a != 0) {
-                            for (int p = 1; p < size; p++) {
-                                if (palette[p].x == col.r && palette[p].y == col.g && palette[p].z == col.b) {
-                                    col_id = p;
-                                    break;
-                                }
-                            }
-                        }
-                        gif->frame[idx] = (su8) col_id;
-                    }
-                    ge_add_frame(gif, sca_ceil(100 * canvas.frame_times[frame]));
-                }
-                ge_close_gif(gif);
-            }
-            s_free(palette);
-
-            e_io_export_to_makapix("makapix_export.gif", sprite.img.cols, sprite.img.rows, frame_count);
+            e_io_export_to_makapix("makapix_export.webp", sprite.img.cols, sprite.img.rows, frame_count);
             u_sprite_kill(&sprite);
         } else {
             // Single frame: export as PNG
@@ -326,6 +311,20 @@ void dialog_create_save() {
     
     impl->gif_hd_btn = ro_single_new(r_texture_new_file(2, 1, "res/button_save_hd.png"));
     impl->gif_hd_btn.rect.pose = u_pose_new_aa(DIALOG_LEFT + DIALOG_WIDTH - 20, DIALOG_TOP - pos, 16, 16);
+
+    pos += 18;
+
+    impl->webp_txt = ro_text_new_font55(16);
+    ro_text_set_text(&impl->webp_txt, "save .webp:");
+
+    ro_text_set_color(&impl->webp_txt, DIALOG_TEXT_COLOR);
+    impl->webp_txt.pose = u_pose_new(DIALOG_LEFT + 8, DIALOG_TOP - pos - 2, 1, 2);
+
+    impl->webp_btn = ro_single_new(r_texture_new_file(2, 1, "res/button_save.png"));
+    impl->webp_btn.rect.pose = u_pose_new_aa(DIALOG_LEFT + DIALOG_WIDTH - 40, DIALOG_TOP - pos, 16, 16);
+
+    impl->webp_hd_btn = ro_single_new(r_texture_new_file(2, 1, "res/button_save_hd.png"));
+    impl->webp_hd_btn.rect.pose = u_pose_new_aa(DIALOG_LEFT + DIALOG_WIDTH - 20, DIALOG_TOP - pos, 16, 16);
 
     pos += 18;
 

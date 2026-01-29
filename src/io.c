@@ -8,6 +8,7 @@
 #include "tile.h"
 #include "cameractrl.h"
 #include "ext_gifenc.h"
+#include "ext_webp.h"
 #include "ext_microtar.h"
 #include "io.h"
 
@@ -198,6 +199,50 @@ void io_gif_hd_save() {
     u_image_kill(&img);
     u_image_kill(&hd);
     e_io_offer_file_as_download("animation_hd.gif");
+}
+
+void io_webp_save() {
+    uImage img;
+    if (io.image_save_merged)
+        img = canvas_get_merged_image();
+    else
+        img = canvas_get_full_image();
+    s_log("save webp merged: %i, size: %i %i",
+          io.image_save_merged,
+          img.cols, img.rows);
+
+    s_log_trace("reorder");
+    uSprite sprite = u_sprite_new_reorder_from_image(canvas.RO.frames, img);
+
+    s_log_trace("saving");
+    webp_save_animated(sprite, canvas.frame_times, "animation.webp");
+    u_sprite_kill(&sprite);
+    u_image_kill(&img);
+
+    s_log_trace("offer as download");
+    e_io_offer_file_as_download("animation.webp");
+    s_log_trace("end");
+}
+
+void io_webp_hd_save() {
+    uImage img;
+    if (io.image_save_merged)
+        img = canvas_get_merged_image();
+    else
+        img = canvas_get_full_image();
+    s_log("save webp merged hd: %i, size: %i %i",
+          io.image_save_merged,
+          img.cols, img.rows);
+
+    uImage hd = u_image_new_clone_scaled(img.cols * io.hd_multiplyer, img.rows * io.hd_multiplyer, false, img);
+
+    uSprite sprite = u_sprite_new_reorder_from_image(canvas.RO.frames, hd);
+
+    webp_save_animated(sprite, canvas.frame_times, "animation_hd.webp");
+    u_sprite_kill(&sprite);
+    u_image_kill(&img);
+    u_image_kill(&hd);
+    e_io_offer_file_as_download("animation_hd.webp");
 }
 
 void io_tilemap_save() {
