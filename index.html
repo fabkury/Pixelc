@@ -136,6 +136,10 @@
                 <input id="file_uploader_webp" type="file" accept="image/webp"/>
                 Upload .webp file
             </label>
+            <label id="modal_upload_image_button" class="modal_button">
+                <input id="file_uploader_image" type="file" accept="image/png,image/webp,image/gif,image/bmp"/>
+                Upload image
+            </label>
 
             <p class="modal_font_small">(Please don't zoom in)</p>
         </div>
@@ -216,7 +220,15 @@
         // Process any pending import
         if (pendingImport) {
             console.log('Processing pending import now that canvas is ready');
-            doImport(pendingImport.webpPtr, pendingImport.dataSize);
+            if (pendingImport.isGIF) {
+                doGIFImport(pendingImport.gifPtr, pendingImport.dataSize);
+            } else if (pendingImport.isBMP) {
+                doBMPImport(pendingImport.bmpPtr, pendingImport.dataSize);
+            } else if (pendingImport.isPNG) {
+                doPNGImport(pendingImport.pngPtr, pendingImport.dataSize);
+            } else {
+                doImport(pendingImport.webpPtr, pendingImport.dataSize);
+            }
             pendingImport = null;
         }
     };
@@ -285,6 +297,197 @@
         }
     }
 
+    // Function to process MAKAPIX_EDIT_GIF data
+    // Receives raw GIF bytes and loads them into Pixelc
+    function processEditGIF(data) {
+        console.log('Processing MAKAPIX_EDIT_GIF: raw GIF data, ' + data.gifDataSize + ' bytes');
+
+        var gifData = data.gifData;  // ArrayBuffer with raw GIF file bytes
+
+        if (!gifData || gifData.byteLength === 0) {
+            console.error('MAKAPIX_EDIT_GIF: invalid or empty GIF data');
+            return;
+        }
+
+        var dataSize = gifData.byteLength;
+        console.log('MAKAPIX_EDIT_GIF: GIF data size = ' + dataSize + ' bytes');
+
+        // Log first bytes to verify it's a valid GIF (should start with "GIF89a" or "GIF87a")
+        var firstBytes = new Uint8Array(gifData, 0, Math.min(6, dataSize));
+        var header = String.fromCharCode.apply(null, firstBytes);
+        console.log('MAKAPIX_EDIT_GIF: file header = "' + header + '" (expecting "GIF89a" or "GIF87a")');
+
+        if (!header.startsWith('GIF8')) {
+            console.error('MAKAPIX_EDIT_GIF: not a valid GIF file');
+            return;
+        }
+
+        // Allocate Emscripten heap memory for GIF data
+        var gifPtr = Module._malloc(dataSize);
+        if (!gifPtr) {
+            console.error('MAKAPIX_EDIT_GIF: failed to allocate memory');
+            return;
+        }
+
+        // Copy GIF data to Emscripten heap
+        var heapView = new Uint8Array(Module.HEAPU8.buffer, gifPtr, dataSize);
+        heapView.set(new Uint8Array(gifData));
+
+        // If canvas is ready, import immediately; otherwise queue it
+        if (pixelcCanvasReady) {
+            console.log('MAKAPIX_EDIT_GIF: canvas ready, importing immediately');
+            doGIFImport(gifPtr, dataSize);
+        } else {
+            console.log('MAKAPIX_EDIT_GIF: canvas not ready yet, queuing import');
+            pendingImport = { gifPtr: gifPtr, dataSize: dataSize, isGIF: true };
+        }
+    }
+
+    // Actually perform the GIF import (called when canvas is ready)
+    function doGIFImport(gifPtr, dataSize) {
+        console.log('MAKAPIX_EDIT_GIF: calling pixelc_load_gif_data (' + dataSize + ' bytes)...');
+
+        try {
+            Module.ccall('pixelc_load_gif_data', null,
+                ['number', 'number'],
+                [gifPtr, dataSize]);
+        } catch (e) {
+            console.error('MAKAPIX_EDIT_GIF: ccall failed:', e);
+        }
+
+        // Free allocated memory
+        Module._free(gifPtr);
+
+        console.log('MAKAPIX_EDIT_GIF: import complete');
+    }
+
+    // Function to process MAKAPIX_EDIT_PNG data
+    // Receives raw PNG bytes and loads them into Pixelc
+    function processEditPNG(data) {
+        console.log('Processing MAKAPIX_EDIT_PNG: raw PNG data, ' + data.pngDataSize + ' bytes');
+
+        var pngData = data.pngData;  // ArrayBuffer with raw PNG file bytes
+
+        if (!pngData || pngData.byteLength === 0) {
+            console.error('MAKAPIX_EDIT_PNG: invalid or empty PNG data');
+            return;
+        }
+
+        var dataSize = pngData.byteLength;
+        console.log('MAKAPIX_EDIT_PNG: PNG data size = ' + dataSize + ' bytes');
+
+        // Log first bytes to verify it's a valid PNG (should start with 0x89 PNG)
+        var firstBytes = new Uint8Array(pngData, 0, Math.min(4, dataSize));
+        console.log('MAKAPIX_EDIT_PNG: file header bytes = ' + firstBytes[0].toString(16) + ' ' + firstBytes[1].toString(16) + ' ' + firstBytes[2].toString(16) + ' ' + firstBytes[3].toString(16) + ' (expecting 89 50 4e 47)');
+
+        if (firstBytes[0] !== 0x89 || firstBytes[1] !== 0x50 || firstBytes[2] !== 0x4E || firstBytes[3] !== 0x47) {
+            console.error('MAKAPIX_EDIT_PNG: not a valid PNG file');
+            return;
+        }
+
+        // Allocate Emscripten heap memory for PNG data
+        var pngPtr = Module._malloc(dataSize);
+        if (!pngPtr) {
+            console.error('MAKAPIX_EDIT_PNG: failed to allocate memory');
+            return;
+        }
+
+        // Copy PNG data to Emscripten heap
+        var heapView = new Uint8Array(Module.HEAPU8.buffer, pngPtr, dataSize);
+        heapView.set(new Uint8Array(pngData));
+
+        // If canvas is ready, import immediately; otherwise queue it
+        if (pixelcCanvasReady) {
+            console.log('MAKAPIX_EDIT_PNG: canvas ready, importing immediately');
+            doPNGImport(pngPtr, dataSize);
+        } else {
+            console.log('MAKAPIX_EDIT_PNG: canvas not ready yet, queuing import');
+            pendingImport = { pngPtr: pngPtr, dataSize: dataSize, isPNG: true };
+        }
+    }
+
+    // Actually perform the PNG import (called when canvas is ready)
+    function doPNGImport(pngPtr, dataSize) {
+        console.log('MAKAPIX_EDIT_PNG: calling pixelc_load_png_data (' + dataSize + ' bytes)...');
+
+        try {
+            Module.ccall('pixelc_load_png_data', null,
+                ['number', 'number'],
+                [pngPtr, dataSize]);
+        } catch (e) {
+            console.error('MAKAPIX_EDIT_PNG: ccall failed:', e);
+        }
+
+        // Free allocated memory
+        Module._free(pngPtr);
+
+        console.log('MAKAPIX_EDIT_PNG: import complete');
+    }
+
+    // Function to process MAKAPIX_EDIT_BMP data
+    // Receives raw BMP bytes and loads them into Pixelc
+    function processEditBMP(data) {
+        console.log('Processing MAKAPIX_EDIT_BMP: raw BMP data, ' + data.bmpDataSize + ' bytes');
+
+        var bmpData = data.bmpData;  // ArrayBuffer with raw BMP file bytes
+
+        if (!bmpData || bmpData.byteLength === 0) {
+            console.error('MAKAPIX_EDIT_BMP: invalid or empty BMP data');
+            return;
+        }
+
+        var dataSize = bmpData.byteLength;
+        console.log('MAKAPIX_EDIT_BMP: BMP data size = ' + dataSize + ' bytes');
+
+        // Log first bytes to verify it's a valid BMP (should start with "BM")
+        var firstBytes = new Uint8Array(bmpData, 0, Math.min(2, dataSize));
+        var header = String.fromCharCode.apply(null, firstBytes);
+        console.log('MAKAPIX_EDIT_BMP: file header = "' + header + '" (expecting "BM")');
+
+        if (header !== 'BM') {
+            console.error('MAKAPIX_EDIT_BMP: not a valid BMP file');
+            return;
+        }
+
+        // Allocate Emscripten heap memory for BMP data
+        var bmpPtr = Module._malloc(dataSize);
+        if (!bmpPtr) {
+            console.error('MAKAPIX_EDIT_BMP: failed to allocate memory');
+            return;
+        }
+
+        // Copy BMP data to Emscripten heap
+        var heapView = new Uint8Array(Module.HEAPU8.buffer, bmpPtr, dataSize);
+        heapView.set(new Uint8Array(bmpData));
+
+        // If canvas is ready, import immediately; otherwise queue it
+        if (pixelcCanvasReady) {
+            console.log('MAKAPIX_EDIT_BMP: canvas ready, importing immediately');
+            doBMPImport(bmpPtr, dataSize);
+        } else {
+            console.log('MAKAPIX_EDIT_BMP: canvas not ready yet, queuing import');
+            pendingImport = { bmpPtr: bmpPtr, dataSize: dataSize, isBMP: true };
+        }
+    }
+
+    // Actually perform the BMP import (called when canvas is ready)
+    function doBMPImport(bmpPtr, dataSize) {
+        console.log('MAKAPIX_EDIT_BMP: calling pixelc_load_bmp_data (' + dataSize + ' bytes)...');
+
+        try {
+            Module.ccall('pixelc_load_bmp_data', null,
+                ['number', 'number'],
+                [bmpPtr, dataSize]);
+        } catch (e) {
+            console.error('MAKAPIX_EDIT_BMP: ccall failed:', e);
+        }
+
+        // Free allocated memory
+        Module._free(bmpPtr);
+
+        console.log('MAKAPIX_EDIT_BMP: import complete');
+    }
+
     // Listen for init message from parent (Makapix)
     window.addEventListener('message', function(event) {
         if (!isAllowedOrigin(event.origin)) return;
@@ -310,6 +513,45 @@
 
             // processEditWebP handles queuing if canvas isn't ready yet
             processEditWebP(data);
+        }
+
+        // Handle GIF import from Makapix (raw GIF bytes)
+        if (data.type === 'MAKAPIX_EDIT_GIF') {
+            console.log('Makapix edit GIF received: ' + (data.gifDataSize || (data.gifData && data.gifData.byteLength)) + ' bytes');
+
+            if (!makapixInitialized) {
+                console.error('MAKAPIX_EDIT_GIF received before MAKAPIX_INIT');
+                return;
+            }
+
+            // processEditGIF handles queuing if canvas isn't ready yet
+            processEditGIF(data);
+        }
+
+        // Handle BMP import from Makapix (raw BMP bytes)
+        if (data.type === 'MAKAPIX_EDIT_BMP') {
+            console.log('Makapix edit BMP received: ' + (data.bmpDataSize || (data.bmpData && data.bmpData.byteLength)) + ' bytes');
+
+            if (!makapixInitialized) {
+                console.error('MAKAPIX_EDIT_BMP received before MAKAPIX_INIT');
+                return;
+            }
+
+            // processEditBMP handles queuing if canvas isn't ready yet
+            processEditBMP(data);
+        }
+
+        // Handle PNG import from Makapix (raw PNG bytes)
+        if (data.type === 'MAKAPIX_EDIT_PNG') {
+            console.log('Makapix edit PNG received: ' + (data.pngDataSize || (data.pngData && data.pngData.byteLength)) + ' bytes');
+
+            if (!makapixInitialized) {
+                console.error('MAKAPIX_EDIT_PNG received before MAKAPIX_INIT');
+                return;
+            }
+
+            // processEditPNG handles queuing if canvas isn't ready yet
+            processEditPNG(data);
         }
     });
 
@@ -405,17 +647,139 @@
         }
     }
 
+    // Unified image upload handler - auto-detects PNG vs WEBP via magic bytes
+    function handle_image_file_upload(evt) {
+        console.log('got an image file upload event');
+        try {
+            var files = evt.target.files;
+            if (!files || files.length === 0) return;
+
+            console.log('image upload name: ' + files[0].name);
+
+            var fr = new FileReader();
+            fr.onload = function () {
+                try {
+                var data = fr.result;
+                var data_bytes = new Uint8Array(data);
+
+                // Detect file type via magic bytes
+                // PNG: 89 50 4E 47 (0x89 'P' 'N' 'G')
+                // WEBP: 52 49 46 46 ... 57 45 42 50 ('RIFF' ... 'WEBP')
+                // GIF: 47 49 46 38 39/37 61 ('GIF89a' or 'GIF87a')
+                var isPng = (data_bytes.length >= 4 &&
+                             data_bytes[0] === 0x89 &&
+                             data_bytes[1] === 0x50 &&
+                             data_bytes[2] === 0x4E &&
+                             data_bytes[3] === 0x47);
+
+                var isWebp = (data_bytes.length >= 12 &&
+                              data_bytes[0] === 0x52 &&  // R
+                              data_bytes[1] === 0x49 &&  // I
+                              data_bytes[2] === 0x46 &&  // F
+                              data_bytes[3] === 0x46 &&  // F
+                              data_bytes[8] === 0x57 &&  // W
+                              data_bytes[9] === 0x45 &&  // E
+                              data_bytes[10] === 0x42 && // B
+                              data_bytes[11] === 0x50);  // P
+
+                var isGif = (data_bytes.length >= 6 &&
+                             data_bytes[0] === 0x47 &&  // G
+                             data_bytes[1] === 0x49 &&  // I
+                             data_bytes[2] === 0x46 &&  // F
+                             data_bytes[3] === 0x38 &&  // 8
+                             (data_bytes[4] === 0x39 || data_bytes[4] === 0x37) &&  // 9 or 7
+                             data_bytes[5] === 0x61);   // a
+
+                // BMP: 42 4D ('BM')
+                var isBmp = (data_bytes.length >= 2 &&
+                             data_bytes[0] === 0x42 &&  // B
+                             data_bytes[1] === 0x4D);   // M
+
+                var actual_filename;
+                if (isGif) {
+                    actual_filename = 'import.gif';
+                    console.log('Detected GIF file');
+                } else if (isBmp) {
+                    actual_filename = 'import.bmp';
+                    console.log('Detected BMP file');
+                } else if (isPng) {
+                    actual_filename = 'import.png';
+                    console.log('Detected PNG file');
+                } else if (isWebp) {
+                    actual_filename = 'import.webp';
+                    console.log('Detected WEBP file');
+                } else {
+                    console.log('Unknown image format, treating as PNG');
+                    actual_filename = 'import.png';
+                }
+
+                // Delete the other import files to avoid stale data
+                try {
+                    if (actual_filename !== 'import.png') {
+                        FS.unlink('import.png');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+                try {
+                    if (actual_filename !== 'import.webp') {
+                        FS.unlink('import.webp');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+                try {
+                    if (actual_filename !== 'import.gif') {
+                        FS.unlink('import.gif');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+                try {
+                    if (actual_filename !== 'import.bmp') {
+                        FS.unlink('import.bmp');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+
+                // Save to the detected filename
+                console.log('Saving to ' + actual_filename + ' (' + data_bytes.length + ' bytes)');
+                try {
+                    var stream = FS.open(actual_filename, 'w');
+                    FS.write(stream, data_bytes, 0, data_bytes.length, 0);
+                    FS.close(stream);
+                    console.log('File saved successfully');
+                } catch (e) {
+                    console.error('Failed to save file: ' + e);
+                    return;
+                }
+
+                // close the modal window
+                modal_file = document.getElementById("modal_window_file");
+                modal_file.style.display = "none";
+
+                // Call done with the REGISTERED filename (file_upload_filename) so the
+                // callback lookup succeeds. The C code will check which file exists.
+                console.log('Calling e_io_file_upload_done with ' + file_upload_filename);
+                ccall('e_io_file_upload_done', 'v', ['string', 'boolean', 'string'],
+                    [file_upload_filename, false, files[0].name],
+                    {async: true});
+                } catch (e) {
+                    console.error('Error in image upload handler: ' + e);
+                }
+            };
+            fr.readAsArrayBuffer(files[0]);
+        } catch (e) {
+            console.log('image file upload failed: ' + e);
+        }
+    }
+
     file_uploader = document.getElementById('file_uploader');
     file_uploader_png = document.getElementById('file_uploader_png');
     file_uploader_txt = document.getElementById('file_uploader_txt');
     file_uploader_json = document.getElementById('file_uploader_json');
     file_uploader_webp = document.getElementById('file_uploader_webp');
+    file_uploader_image = document.getElementById('file_uploader_image');
 
     file_uploader.addEventListener('change', handle_file_upload, false);
     file_uploader_png.addEventListener('change', handle_file_upload, false);
     file_uploader_txt.addEventListener('change', handle_file_upload, false);
     file_uploader_json.addEventListener('change', handle_file_upload, false);
     file_uploader_webp.addEventListener('change', handle_file_upload, false);
+    file_uploader_image.addEventListener('change', handle_image_file_upload, false);
 
     // called from the engine to ask for a file upload
     function ask_for_file_upload(filename, as_ascii) {
@@ -436,12 +800,14 @@
         uploader_txt_btn = document.getElementById('modal_upload_txt_button');
         uploader_json_btn = document.getElementById('modal_upload_json_button');
         uploader_webp_btn = document.getElementById('modal_upload_webp_button');
+        uploader_image_btn = document.getElementById('modal_upload_image_button');
 
         uploader_btn.style.display = "none";
         uploader_png_btn.style.display = "none";
         uploader_txt_btn.style.display = "none";
         uploader_json_btn.style.display = "none";
         uploader_webp_btn.style.display = "none";
+        uploader_image_btn.style.display = "none";
 
         filename_lower = filename.toLowerCase();
         if (filename_lower.endsWith(".png"))
@@ -452,6 +818,8 @@
             uploader_txt_btn.style.display = "block";
         else if (filename_lower.endsWith(".json"))
             uploader_json_btn.style.display = "block";
+        else if (filename_lower === "import.image")
+            uploader_image_btn.style.display = "block";
         else
             uploader_btn.style.display = "block";
 
