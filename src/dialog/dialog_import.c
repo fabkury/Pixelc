@@ -35,6 +35,8 @@ typedef struct {
 
     RoSingle upload;
     RoSingle upload_webp;
+    RoText upload_label;
+    RoText upload_webp_label;
     bool upload_available;
 
 } Impl;
@@ -46,6 +48,8 @@ static void kill_fn() {
     ro_single_kill(&impl->import);
     ro_single_kill(&impl->upload);
     ro_single_kill(&impl->upload_webp);
+    ro_text_kill(&impl->upload_label);
+    ro_text_kill(&impl->upload_webp_label);
     ro_text_kill(&impl->to_canvas_txt);
     ro_single_kill(&impl->to_canvas_btn);
     ro_text_kill(&impl->as_selection_txt);
@@ -70,7 +74,9 @@ static void render(const mat4 *cam_mat) {
         ro_single_render(&impl->as_selection_btn, cam_mat);
     }
     if (impl->upload_available) {
+        ro_text_render(&impl->upload_label, cam_mat);
         ro_single_render(&impl->upload, cam_mat);
+        ro_text_render(&impl->upload_webp_label, cam_mat);
         ro_single_render(&impl->upload_webp, cam_mat);
     }
 }
@@ -283,11 +289,34 @@ void dialog_create_import() {
     dialog.impl_height = pos;
 
 #ifndef PLATFORM_CXXDROID
+    // Use wider dialog to fit labels and buttons
+    dialog.impl_width = 150;
+    float import_left = -dialog.impl_width / 2;
+
     impl->upload = ro_single_new(r_texture_new_file(2, 1, "res/button_dialog_upload.png"));
     impl->upload_webp = ro_single_new(r_texture_new_file(2, 1, "res/button_dialog_upload.png"));
     impl->upload_available = true;
-    impl->upload.rect.pose = u_pose_new_aa(DIALOG_LEFT + 8, DIALOG_TOP - pos - 18, 64, 16);
-    impl->upload_webp.rect.pose = u_pose_new_aa(DIALOG_LEFT + 8 + 72, DIALOG_TOP - pos - 18, 64, 16);
+
+    // Create labels
+    impl->upload_label = ro_text_new_font55(8);
+    ro_text_set_text(&impl->upload_label, "PNG:");
+    ro_text_set_color(&impl->upload_label, DIALOG_TEXT_COLOR);
+
+    impl->upload_webp_label = ro_text_new_font55(8);
+    ro_text_set_text(&impl->upload_webp_label, "WEBP:");
+    ro_text_set_color(&impl->upload_webp_label, DIALOG_TEXT_COLOR);
+
+    // Stack buttons vertically with labels on the left
+    float btn_top1 = DIALOG_TOP - pos - 18;
+    float btn_top2 = DIALOG_TOP - pos - 40;
+
+    impl->upload_label.pose = u_pose_new(import_left + 8, btn_top1 + 6, 1, 2);
+    impl->upload.rect.pose = u_pose_new_aa(import_left + dialog.impl_width - 8 - 64, btn_top1, 64, 16);
+
+    impl->upload_webp_label.pose = u_pose_new(import_left + 8, btn_top2 + 6, 1, 2);
+    impl->upload_webp.rect.pose = u_pose_new_aa(import_left + dialog.impl_width - 8 - 64, btn_top2, 64, 16);
+
+    dialog.impl_height += 40;  // Add extra height for vertically stacked buttons
 #endif
 
 

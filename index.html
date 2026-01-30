@@ -204,6 +204,86 @@
     function isAllowedOrigin(origin) { return MAKAPIX_ORIGINS.includes(origin); }
     var makapixInitialized = false;
     var detectedParentOrigin = null;
+    var emscriptenRuntimeReady = false;
+    var pixelcCanvasReady = false; // True when C code signals canvas is ready
+    var pendingImport = null; // Stores {webpPtr, dataSize} if import arrives before canvas ready
+
+    // Called from C code (main.c init()) when canvas is fully initialized
+    window.onPixelcCanvasReady = function() {
+        console.log('Pixelc canvas ready signal received from C code');
+        pixelcCanvasReady = true;
+
+        // Process any pending import
+        if (pendingImport) {
+            console.log('Processing pending import now that canvas is ready');
+            doImport(pendingImport.webpPtr, pendingImport.dataSize);
+            pendingImport = null;
+        }
+    };
+
+    // Actually perform the import (called when canvas is ready)
+    function doImport(webpPtr, dataSize) {
+        console.log('MAKAPIX_EDIT_WEBP: calling pixelc_load_webp_data (' + dataSize + ' bytes)...');
+
+        try {
+            Module.ccall('pixelc_load_webp_data', null,
+                ['number', 'number'],
+                [webpPtr, dataSize]);
+        } catch (e) {
+            console.error('MAKAPIX_EDIT_WEBP: ccall failed:', e);
+        }
+
+        // Free allocated memory
+        Module._free(webpPtr);
+
+        console.log('MAKAPIX_EDIT_WEBP: import complete');
+    }
+
+    // Function to process MAKAPIX_EDIT_WEBP data
+    // Receives raw WebP bytes and uses the same code path as Import dialog
+    function processEditWebP(data) {
+        console.log('Processing MAKAPIX_EDIT_WEBP: raw WebP data, ' + data.webpDataSize + ' bytes');
+
+        var webpData = data.webpData;  // ArrayBuffer with raw WebP file bytes
+
+        if (!webpData || webpData.byteLength === 0) {
+            console.error('MAKAPIX_EDIT_WEBP: invalid or empty WebP data');
+            return;
+        }
+
+        var dataSize = webpData.byteLength;
+        console.log('MAKAPIX_EDIT_WEBP: WebP data size = ' + dataSize + ' bytes');
+
+        // Log first bytes to verify it's a valid WebP (should start with "RIFF")
+        var firstBytes = new Uint8Array(webpData, 0, Math.min(12, dataSize));
+        var header = String.fromCharCode.apply(null, firstBytes.slice(0, 4));
+        console.log('MAKAPIX_EDIT_WEBP: file header = "' + header + '" (expecting "RIFF")');
+
+        if (header !== 'RIFF') {
+            console.error('MAKAPIX_EDIT_WEBP: not a valid WebP file');
+            return;
+        }
+
+        // Allocate Emscripten heap memory for WebP data
+        var webpPtr = Module._malloc(dataSize);
+        if (!webpPtr) {
+            console.error('MAKAPIX_EDIT_WEBP: failed to allocate memory');
+            return;
+        }
+
+        // Copy WebP data to Emscripten heap
+        var heapView = new Uint8Array(Module.HEAPU8.buffer, webpPtr, dataSize);
+        heapView.set(new Uint8Array(webpData));
+
+        // If canvas is ready, import immediately; otherwise queue it
+        if (pixelcCanvasReady) {
+            console.log('MAKAPIX_EDIT_WEBP: canvas ready, importing immediately');
+            doImport(webpPtr, dataSize);
+        } else {
+            console.log('MAKAPIX_EDIT_WEBP: canvas not ready yet, queuing import');
+            pendingImport = { webpPtr: webpPtr, dataSize: dataSize };
+        }
+    }
 
     // Listen for init message from parent (Makapix)
     window.addEventListener('message', function(event) {
@@ -218,17 +298,39 @@
             detectedParentOrigin = event.origin;
             // Could store access token if needed for future features
         }
-    });
 
-    // Signal to parent that Pixelc is ready
-    window.addEventListener('load', function() {
-        if (window.parent !== window) {
-            // Send ready signal to all allowed origins (we don't know which one yet)
-            MAKAPIX_ORIGINS.forEach(function(origin) {
-                window.parent.postMessage({ type: 'PIXELC_READY' }, origin);
-            });
+        // Handle animated WebP import from Makapix (raw WebP bytes)
+        if (data.type === 'MAKAPIX_EDIT_WEBP') {
+            console.log('Makapix edit WebP received: ' + (data.webpDataSize || (data.webpData && data.webpData.byteLength)) + ' bytes');
+
+            if (!makapixInitialized) {
+                console.error('MAKAPIX_EDIT_WEBP received before MAKAPIX_INIT');
+                return;
+            }
+
+            // processEditWebP handles queuing if canvas isn't ready yet
+            processEditWebP(data);
         }
     });
+
+    // Signal to parent that Pixelc is ready - called when Emscripten runtime is initialized
+    function signalPixelcReady() {
+        if (window.parent !== window && detectedParentOrigin) {
+            // Send ready signal only to the detected parent origin
+            console.log('Sending PIXELC_READY to: ' + detectedParentOrigin);
+            window.parent.postMessage({ type: 'PIXELC_READY' }, detectedParentOrigin);
+        } else if (window.parent !== window) {
+            // Send ready signal to all allowed origins (we don't know which one yet)
+            console.log('Sending PIXELC_READY to all allowed origins');
+            MAKAPIX_ORIGINS.forEach(function(origin) {
+                try {
+                    window.parent.postMessage({ type: 'PIXELC_READY' }, origin);
+                } catch (e) {
+                    // Ignore origin mismatch errors
+                }
+            });
+        }
+    }
 
     // Called from the engine to export artwork to Makapix Club
     function export_to_makapix(filename, width, height, frameCount) {
@@ -381,16 +483,31 @@
         setStatus: function(text) {
             console.log("Module::setStatus: "+ text);
             var startup_text = document.getElementsByClassName("startup_text")[0];
+            if(!startup_text) return; // Element may not exist if page was replaced
             if(!text) {
                 startup_text.style.display = "none";
+                // Note: Canvas ready signal comes from C code via window.onPixelcCanvasReady()
             } else {
                 startup_text.style.display = "block";
                 startup_text.innerHTML = text;
             }
         },
+        onRuntimeInitialized: function() {
+            console.log('Emscripten runtime initialized');
+            emscriptenRuntimeReady = true;
+
+            // Signal to parent that Pixelc is ready
+            signalPixelcReady();
+
+            // Note: pendingEditWebP will be processed when setStatus receives empty text
+            // (indicating full app initialization including renderer)
+        },
     };
     window.onerror = function (event) {
-        set_exit_failure_error_msg();
+        // Only show error page if runtime hasn't initialized yet
+        if (!emscriptenRuntimeReady) {
+            set_exit_failure_error_msg();
+        }
     };
 
 
