@@ -42,9 +42,9 @@ RUN emcc -O3 \
     -I../include/ \
     -I/usr/local/include \
     -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s FULL_ES3=1 \
-    -s EXPORTED_FUNCTIONS='["_main", "_e_io_idbfs_synced", "_e_io_file_upload_done", "_pixelc_load_webp_data", "_malloc", "_free"]' \
+    -s EXPORTED_FUNCTIONS='["_main", "_e_io_idbfs_synced", "_e_io_file_upload_done", "_pixelc_load_webp_data", "_pixelc_load_gif_data", "_pixelc_load_bmp_data", "_pixelc_load_png_data", "_malloc", "_free"]' \
     -s EXPORTED_RUNTIME_METHODS=FS,ccall \
-    -s SDL2_IMAGE_FORMATS='["png"]' \
+    -s SDL2_IMAGE_FORMATS='["png","bmp"]' \
     --preload-file ./res \
     -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY=1 -s EXIT_RUNTIME=1 \
     -lidbfs.js \

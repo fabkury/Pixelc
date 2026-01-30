@@ -111,8 +111,18 @@ static void uploaded_image(const char *file, bool ascii, const char *user_file_n
                     s_log("static webp detected, converting to PNG");
                     u_image_save_file(img, "import.png");
                     u_image_kill(&img);
+                } else {
+                    // Check for BMP (JavaScript saves to import.bmp)
+                    // BMP is static-only, SDL2_Image handles it via u_image_new_file
+                    img = u_image_new_file(1, "import.bmp");
+                    if (u_image_valid(img)) {
+                        // BMP was uploaded - convert to PNG for compatibility
+                        s_log("bmp detected, converting to PNG");
+                        u_image_save_file(img, "import.png");
+                        u_image_kill(&img);
+                    }
+                    // For PNG uploads, import.png is already in place (no conversion needed)
                 }
-                // For PNG uploads, import.png is already in place (no conversion needed)
             }
         }
     }
