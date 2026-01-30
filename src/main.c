@@ -2,6 +2,10 @@
 #include "r/r.h"
 #include "u/u.h"
 
+#ifdef PLATFORM_EMSCRIPTEN
+#include <emscripten.h>
+#endif
+
 #include "io.h"
 #include "camera.h"
 #include "background.h"
@@ -81,6 +85,15 @@ static void init() {
     // startup color and hide palette info on startup
     palette_set_color(s_min(1, palette.RO.palette_size-1));
     palette_set_info(NULL);
+
+#ifdef PLATFORM_EMSCRIPTEN
+    // Signal to JavaScript that canvas is fully initialized and ready for imports
+    EM_ASM(
+        if (typeof window.onPixelcCanvasReady === 'function') {
+            window.onPixelcCanvasReady();
+        }
+    );
+#endif
 }
 
 // this functions is called either each frame or at a specific update/s time

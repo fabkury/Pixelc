@@ -33,7 +33,7 @@ RUN emcc -O3 \
     -I../include/ \
     -I/usr/local/include \
     -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s FULL_ES3=1 \
-    -s EXPORTED_FUNCTIONS='["_main", "_e_io_idbfs_synced", "_e_io_file_upload_done"]' \
+    -s EXPORTED_FUNCTIONS='["_main", "_e_io_idbfs_synced", "_e_io_file_upload_done", "_pixelc_load_webp_data", "_malloc", "_free"]' \
     -s EXPORTED_RUNTIME_METHODS=FS,ccall \
     -s SDL2_IMAGE_FORMATS='["png"]' \
     --preload-file ./res \

@@ -54,14 +54,19 @@ void dialog_update(float dtime) {
     if (dialog.opt_on_cancel_cb || dialog.opt_on_ok_cb)
         height += 20;
 
-    dialog.bg.rect.pose = u_pose_new_aa(DIALOG_LEFT, DIALOG_TOP, DIALOG_WIDTH, height);
+    float width = dialog.impl_width > 0 ? dialog.impl_width : DIALOG_WIDTH;
+    float left = -width / 2;
+    dialog.bg.rect.pose = u_pose_new_aa(left, DIALOG_TOP, width, height);
     dialog.bg_shadow.rect.pose = dialog.bg.rect.pose;
     u_pose_shift_xy(&dialog.bg_shadow.rect.pose, 2, -2);
-    u_pose_set_size(&dialog.bg.rect.uv, DIALOG_WIDTH / 2, height / 2);
+    u_pose_set_size(&dialog.bg.rect.uv, width / 2, height / 2);
     dialog.bg_shadow.rect.uv = dialog.bg.rect.uv;
 
-    u_pose_aa_set_bottom(&dialog.cancel.rect.pose, DIALOG_TOP - height + 2);
-    u_pose_aa_set_bottom(&dialog.ok.rect.pose, DIALOG_TOP - height + 2);
+    // Update cancel/ok button positions for custom width
+    dialog.cancel.rect.pose = u_pose_new_aa(left + 10, DIALOG_TOP - height + 2,
+                                            dialog.cancel.tex.sprite_size.x, dialog.cancel.tex.sprite_size.y);
+    dialog.ok.rect.pose = u_pose_new_aa(left + width - 10 - dialog.ok.tex.sprite_size.x, DIALOG_TOP - height + 2,
+                                        dialog.ok.tex.sprite_size.x, dialog.ok.tex.sprite_size.y);
 }
 
 void dialog_render(const mat4 *cam_mat) {
@@ -101,6 +106,7 @@ void dialog_hide() {
     dialog.kill();
     dialog.impl = NULL;
     dialog.id[0] = '\0';
+    dialog.impl_width = 0;  // Reset to default width
     dialog.opt_on_ok_cb = NULL;
     dialog.opt_on_cancel_cb = NULL;
     dialog.kill = NULL;
@@ -125,7 +131,9 @@ void dialog_set_title(const char *title_id, vec4 color) {
     vec2 size = ro_text_set_text(&dialog.title, title_id);
     ro_text_set_text(&dialog.title_shadow, title_id);
     ro_text_set_color(&dialog.title, color);
-    dialog.title.pose = u_pose_new(DIALOG_LEFT + DIALOG_WIDTH / 2 - sca_ceil(size.x),
+    // Use custom width if set, otherwise default
+    float width = dialog.impl_width > 0 ? dialog.impl_width : DIALOG_WIDTH;
+    dialog.title.pose = u_pose_new(-sca_ceil(size.x),
                                    DIALOG_TOP - 2, 2, 2);
     dialog.title_shadow.pose = dialog.title.pose;
     u_pose_shift_xy(&dialog.title_shadow.pose, 1, -1);

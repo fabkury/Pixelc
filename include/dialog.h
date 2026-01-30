@@ -41,6 +41,7 @@ struct Dialog_Globals {
     void *user_data;
 
     float impl_height;
+    float impl_width;  // 0 means use default DIALOG_WIDTH
 
     RoSingle bg_alpha_layer;
     RoSingle bg;
