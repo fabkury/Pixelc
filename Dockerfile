@@ -17,6 +17,15 @@ RUN curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/we
     emmake make -j$(nproc) && \
     emmake make install
 
+# Download and build giflib for Emscripten
+RUN curl -L https://sourceforge.net/projects/giflib/files/giflib-5.2.2.tar.gz/download -o giflib.tar.gz && \
+    tar xzf giflib.tar.gz && \
+    cd giflib-5.2.2 && \
+    emcc -O3 -c dgif_lib.c gif_err.c gifalloc.c gif_hash.c openbsd-reallocarray.c -I. && \
+    emar rcs libgif.a *.o && \
+    cp libgif.a /usr/local/lib/ && \
+    cp gif_lib.h /usr/local/include/
+
 # Copy source files
 COPY . .
 
@@ -39,7 +48,7 @@ RUN emcc -O3 \
     --preload-file ./res \
     -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY=1 -s EXIT_RUNTIME=1 \
     -lidbfs.js \
-    -L/usr/local/lib -lwebpmux -lwebpdemux -lwebp -lsharpyuv -lm \
+    -L/usr/local/lib -lwebpmux -lwebpdemux -lwebp -lsharpyuv -lgif -lm \
     -DPLATFORM_EMSCRIPTEN -DOPTION_GLES -DOPTION_SDL \
     ../src/e/*.c ../src/p/*.c ../src/r/*.c ../src/u/*.c ../src/*.c ../src/dialog/*.c ../src/tool/*.c \
     -o index.js

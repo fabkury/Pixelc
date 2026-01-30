@@ -136,6 +136,10 @@
                 <input id="file_uploader_webp" type="file" accept="image/webp"/>
                 Upload .webp file
             </label>
+            <label id="modal_upload_image_button" class="modal_button">
+                <input id="file_uploader_image" type="file" accept="image/png,image/webp,image/gif"/>
+                Upload image
+            </label>
 
             <p class="modal_font_small">(Please don't zoom in)</p>
         </div>
@@ -405,17 +409,114 @@
         }
     }
 
+    // Unified image upload handler - auto-detects PNG vs WEBP via magic bytes
+    function handle_image_file_upload(evt) {
+        console.log('got an image file upload event');
+        try {
+            var files = evt.target.files;
+            if (!files || files.length === 0) return;
+
+            console.log('image upload name: ' + files[0].name);
+
+            var fr = new FileReader();
+            fr.onload = function () {
+                var data = fr.result;
+                var data_bytes = new Uint8Array(data);
+
+                // Detect file type via magic bytes
+                // PNG: 89 50 4E 47 (0x89 'P' 'N' 'G')
+                // WEBP: 52 49 46 46 ... 57 45 42 50 ('RIFF' ... 'WEBP')
+                // GIF: 47 49 46 38 39/37 61 ('GIF89a' or 'GIF87a')
+                var isPng = (data_bytes.length >= 4 &&
+                             data_bytes[0] === 0x89 &&
+                             data_bytes[1] === 0x50 &&
+                             data_bytes[2] === 0x4E &&
+                             data_bytes[3] === 0x47);
+
+                var isWebp = (data_bytes.length >= 12 &&
+                              data_bytes[0] === 0x52 &&  // R
+                              data_bytes[1] === 0x49 &&  // I
+                              data_bytes[2] === 0x46 &&  // F
+                              data_bytes[3] === 0x46 &&  // F
+                              data_bytes[8] === 0x57 &&  // W
+                              data_bytes[9] === 0x45 &&  // E
+                              data_bytes[10] === 0x42 && // B
+                              data_bytes[11] === 0x50);  // P
+
+                var isGif = (data_bytes.length >= 6 &&
+                             data_bytes[0] === 0x47 &&  // G
+                             data_bytes[1] === 0x49 &&  // I
+                             data_bytes[2] === 0x46 &&  // F
+                             data_bytes[3] === 0x38 &&  // 8
+                             (data_bytes[4] === 0x39 || data_bytes[4] === 0x37) &&  // 9 or 7
+                             data_bytes[5] === 0x61);   // a
+
+                var actual_filename;
+                if (isGif) {
+                    actual_filename = 'import.gif';
+                    console.log('Detected GIF file');
+                } else if (isPng) {
+                    actual_filename = 'import.png';
+                    console.log('Detected PNG file');
+                } else if (isWebp) {
+                    actual_filename = 'import.webp';
+                    console.log('Detected WEBP file');
+                } else {
+                    console.log('Unknown image format, treating as PNG');
+                    actual_filename = 'import.png';
+                }
+
+                // Delete the other import files to avoid stale data
+                try {
+                    if (actual_filename !== 'import.png') {
+                        FS.unlink('import.png');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+                try {
+                    if (actual_filename !== 'import.webp') {
+                        FS.unlink('import.webp');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+                try {
+                    if (actual_filename !== 'import.gif') {
+                        FS.unlink('import.gif');
+                    }
+                } catch (e) { /* File didn't exist, that's fine */ }
+
+                // Save to the detected filename
+                var stream = FS.open(actual_filename, 'w');
+                FS.write(stream, data_bytes, 0, data_bytes.length, 0);
+                FS.close(stream);
+
+                // close the modal window
+                modal_file = document.getElementById("modal_window_file");
+                modal_file.style.display = "none";
+
+                // Call done with the REGISTERED filename (file_upload_filename) so the
+                // callback lookup succeeds. The C code will check which file exists.
+                ccall('e_io_file_upload_done', 'v', ['string', 'boolean', 'string'],
+                    [file_upload_filename, false, files[0].name],
+                    {async: true});
+            };
+            fr.readAsArrayBuffer(files[0]);
+        } catch (e) {
+            console.log('image file upload failed: ' + e);
+        }
+    }
+
     file_uploader = document.getElementById('file_uploader');
     file_uploader_png = document.getElementById('file_uploader_png');
     file_uploader_txt = document.getElementById('file_uploader_txt');
     file_uploader_json = document.getElementById('file_uploader_json');
     file_uploader_webp = document.getElementById('file_uploader_webp');
+    file_uploader_image = document.getElementById('file_uploader_image');
 
     file_uploader.addEventListener('change', handle_file_upload, false);
     file_uploader_png.addEventListener('change', handle_file_upload, false);
     file_uploader_txt.addEventListener('change', handle_file_upload, false);
     file_uploader_json.addEventListener('change', handle_file_upload, false);
     file_uploader_webp.addEventListener('change', handle_file_upload, false);
+    file_uploader_image.addEventListener('change', handle_image_file_upload, false);
 
     // called from the engine to ask for a file upload
     function ask_for_file_upload(filename, as_ascii) {
@@ -436,12 +537,14 @@
         uploader_txt_btn = document.getElementById('modal_upload_txt_button');
         uploader_json_btn = document.getElementById('modal_upload_json_button');
         uploader_webp_btn = document.getElementById('modal_upload_webp_button');
+        uploader_image_btn = document.getElementById('modal_upload_image_button');
 
         uploader_btn.style.display = "none";
         uploader_png_btn.style.display = "none";
         uploader_txt_btn.style.display = "none";
         uploader_json_btn.style.display = "none";
         uploader_webp_btn.style.display = "none";
+        uploader_image_btn.style.display = "none";
 
         filename_lower = filename.toLowerCase();
         if (filename_lower.endsWith(".png"))
@@ -452,6 +555,8 @@
             uploader_txt_btn.style.display = "block";
         else if (filename_lower.endsWith(".json"))
             uploader_json_btn.style.display = "block";
+        else if (filename_lower === "import.image")
+            uploader_image_btn.style.display = "block";
         else
             uploader_btn.style.display = "block";
 
